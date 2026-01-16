@@ -45,6 +45,27 @@ This repository contains several utility scripts for managing Open Horizon insta
   - Tool availability checks (curl, jq, hzn)
   - Error handling and cleanup
 
+## Shell Compatibility Notes
+
+### Bash Version Requirements
+These scripts are designed to work with Bash 3.2+ for maximum compatibility across different systems (including older macOS versions).
+
+**Known Compatibility Issues:**
+- **`mapfile` / `readarray`**: Not available in Bash 3.x (macOS default). Scripts use `while read` loops instead for array population.
+- **Process substitution** (`< <(command)`): Requires Bash 4.0+ but is used sparingly with fallbacks where needed.
+
+**Portable Array Population Pattern:**
+```bash
+# Instead of: mapfile -t array < <(command)
+# Use this portable approach:
+array=()
+while IFS= read -r item; do
+    [ -n "$item" ] && array+=("$item")
+done < <(command)
+```
+
+This pattern is used throughout the scripts to ensure compatibility with older Bash versions while maintaining functionality.
+
 ## Usage
 
 ### Is the CLI installed, configured, and running?
