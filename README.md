@@ -7,14 +7,18 @@ The purpose of this repo is to collect scripts that will automate creation, list
 ```
 hzn-utils/
 ├── lib/
-│   └── common.sh          # Shared library with common functions
-├── list-orgs.sh           # Interactive organization listing (hzn CLI)
-├── list-users.sh          # Interactive user listing (hzn CLI)
-├── list-a-orgs.sh         # API-based organization listing
-├── list-a-users.sh        # API-based user listing
-├── test-credentials.sh    # Credential validation tool
-├── test-hzn.sh           # CLI installation test
-└── *.env                  # Credential files (not in git)
+│   └── common.sh              # Shared library with common functions
+├── list-orgs.sh               # Interactive organization listing (hzn CLI)
+├── list-users.sh              # Interactive user listing (hzn CLI)
+├── list-a-orgs.sh             # API-based organization listing
+├── list-a-users.sh            # API-based user listing
+├── list-a-org-nodes.sh        # API-based organization node listing
+├── list-a-user-nodes.sh       # API-based user node listing
+├── list-a-user-services.sh    # API-based user service listing
+├── list-a-user-deployment.sh  # API-based user deployment policy listing
+├── test-credentials.sh        # Credential validation tool
+├── test-hzn.sh                # CLI installation test
+└── *.env                      # Credential files (not in git)
 ```
 
 ## Available Scripts
@@ -28,8 +32,10 @@ This repository contains several utility scripts for managing Open Horizon insta
 ### API-Based Scripts (using REST API)
 - **`list-a-orgs.sh`** - List organizations using REST API with multiple output modes
 - **`list-a-users.sh`** - List users using REST API with multiple output modes
-- **`list-a-user-nodes.sh`** - List nodes for a specific user using REST API
 - **`list-a-org-nodes.sh`** - List all nodes in an organization using REST API
+- **`list-a-user-nodes.sh`** - List nodes for a specific user using REST API
+- **`list-a-user-services.sh`** - List services for a specific user using REST API
+- **`list-a-user-deployment.sh`** - List deployment policies for a specific user using REST API
 
 ### Testing Scripts
 - **`test-credentials.sh`** - Test and validate your Open Horizon credentials

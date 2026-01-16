@@ -14,6 +14,8 @@ hzn-utils/
 ├── list-a-users.sh            # API-based user listing
 ├── list-a-org-nodes.sh        # API-based organization node listing
 ├── list-a-user-nodes.sh       # API-based user node listing
+├── list-a-user-services.sh    # API-based user service listing
+├── list-a-user-deployment.sh  # API-based user deployment policy listing
 ├── test-credentials.sh        # Credential validation tool
 ├── test-hzn.sh                # CLI installation test
 └── *.env                      # Credential files (not in git)
@@ -33,6 +35,8 @@ This repository contains several utility scripts for managing Open Horizon insta
 - **`list-a-users.sh`** - List users using REST API with multiple output modes
 - **`list-a-org-nodes.sh`** - List nodes in an organization using REST API
 - **`list-a-user-nodes.sh`** - List nodes for a specific user using REST API
+- **`list-a-user-services.sh`** - List services for a specific user using REST API
+- **`list-a-user-deployment.sh`** - List deployment policies for a specific user using REST API
 
 ### Testing Scripts
 - **`test-hzn.sh`** - Test Open Horizon CLI installation and configuration
