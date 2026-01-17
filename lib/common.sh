@@ -10,7 +10,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
+MAGENTA='\033[0;35m'  # Used by list-a-users.sh for hub admin badge
 NC='\033[0m' # No Color
 
 # Global flag for JSON-only mode (can be set by calling script)
@@ -115,9 +115,9 @@ select_env_file() {
     done
     echo ""
     
-    # Prompt user to select a file
+# Prompt user to select a file
     while true; do
-        read -p "Select a file (1-${#env_files[@]}): " selection
+        read -r -p "Select a file (1-${#env_files[@]}): " selection
         
         if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 1 ] && [ "$selection" -le "${#env_files[@]}" ]; then
             selected_file="${env_files[$((selection-1))]}"
@@ -149,6 +149,7 @@ load_credentials() {
     
     # Source the .env file
     set -a  # Automatically export all variables
+    # shellcheck source=/dev/null
     source "$env_file"
     set +a
     
@@ -157,7 +158,8 @@ load_credentials() {
     local missing_vars=()
     
     for var in "${required_vars[@]}"; do
-        if [ -z "${!var}" ]; then
+        # Use parameter expansion with default to avoid unbound variable error
+        if [ -z "${!var:-}" ]; then
             missing_vars+=("$var")
         fi
     done
@@ -254,10 +256,11 @@ check_curl() {
 # Check if jq is installed (optional)
 # Sets global variable: JQ_AVAILABLE (true/false)
 check_jq() {
-    JQ_AVAILABLE=false
+    JQ_AVAILABLE=false  # Used by scripts that source this library
     if command -v jq &> /dev/null; then
         JQ_AVAILABLE=true
     fi
+    export JQ_AVAILABLE
 }
 
 # Validate URL format
@@ -292,7 +295,7 @@ validate_org_id() {
 #   $2 - API endpoint (relative to BASE_URL)
 #   $3 - Optional: JSON data for POST/PUT
 # Returns: HTTP response body and status code
-# Sets global variables: http_code, response_body
+# Sets global variables: http_code, response_body (used by calling scripts)
 make_api_call() {
     local method="$1"
     local endpoint="$2"
@@ -307,10 +310,13 @@ make_api_call() {
         response=$(curl -sS -w "\n%{http_code}" -u "$FULL_AUTH" "$url" 2>&1)
     fi
     
-    # Extract HTTP status code (last line)
+    # Extract HTTP status code (last line) - used by calling scripts
     http_code=$(echo "$response" | tail -n1)
-    # Extract response body (all but last line)
+    # Extract response body (all but last line) - used by calling scripts
     response_body=$(echo "$response" | sed '$d')
+    
+    # Export for use by calling scripts
+    export http_code response_body
 }
 
 # Validate JSON response
@@ -338,16 +344,17 @@ setup_cleanup_trap() {
     
     # Default cleanup function if not provided
     if [ "$cleanup_func" = "cleanup" ] && ! declare -f cleanup &> /dev/null; then
+        # shellcheck disable=SC2329  # Function invoked indirectly via trap
         cleanup() {
             local exit_code=$?
             # Clean up temporary files if they exist
             [ -n "${temp_env_file:-}" ] && [ -f "$temp_env_file" ] && rm -f "$temp_env_file"
             [ -n "${temp_response_file:-}" ] && [ -f "$temp_response_file" ] && rm -f "$temp_response_file"
-            exit $exit_code
+            exit "$exit_code"
         }
     fi
     
-    trap "$cleanup_func" EXIT INT TERM
+    trap '$cleanup_func' EXIT INT TERM
 }
 
 # Export functions and variables for use in other scripts
@@ -356,5 +363,8 @@ export -f find_env_files select_env_file load_credentials parse_auth
 export -f display_config check_hzn_cli check_hzn_agent check_curl check_jq
 export -f validate_url validate_org_id make_api_call validate_json
 export -f setup_cleanup_trap
+
+# Export color codes for use in other scripts
+export RED GREEN YELLOW BLUE CYAN MAGENTA NC
 
 # Made with Bob

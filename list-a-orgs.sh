@@ -150,11 +150,17 @@ fi
 # Parse the response to get organization names and details
 if [ "$JQ_AVAILABLE" = true ]; then
     # Use jq for better JSON parsing
-    org_names=($(echo "$response_body" | jq -r '.orgs | keys[]' 2>/dev/null || echo ""))
+    org_names=()
+    while IFS= read -r org; do
+        [ -n "$org" ] && org_names+=("$org")
+    done < <(echo "$response_body" | jq -r '.orgs | keys[]' 2>/dev/null || echo "")
     total_orgs=$(echo "$response_body" | jq -r '.orgs | length' 2>/dev/null || echo "0")
 else
     # Fallback to basic parsing without jq
-    org_names=($(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('orgs', {}).keys()))" 2>/dev/null || echo ""))
+    org_names=()
+    while IFS= read -r org; do
+        [ -n "$org" ] && org_names+=("$org")
+    done < <(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('orgs', {}).keys()))" 2>/dev/null || echo "")
     total_orgs=${#org_names[@]}
 fi
 
@@ -234,7 +240,7 @@ if [ "$JSON_ONLY" = false ]; then
     echo ""
 
     # Summary of access permissions
-    if [ $inaccessible_orgs -eq 0 ]; then
+    if [ "$inaccessible_orgs" -eq 0 ]; then
         print_success "You have full access to all organizations"
     else
         print_warning "Limited access: You can view $accessible_orgs out of $total_orgs organizations"

@@ -199,11 +199,17 @@ fi
 # Parse the response to get service names and details
 if [ "$JQ_AVAILABLE" = true ]; then
     # Use jq for better JSON parsing
-    service_keys=($(echo "$response_body" | jq -r '.services | keys[]' 2>/dev/null || echo ""))
+    service_keys=()
+    while IFS= read -r service; do
+        [ -n "$service" ] && service_keys+=("$service")
+    done < <(echo "$response_body" | jq -r '.services | keys[]' 2>/dev/null || echo "")
     total_services=$(echo "$response_body" | jq -r '.services | length' 2>/dev/null || echo "0")
 else
     # Fallback to basic parsing without jq
-    service_keys=($(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('services', {}).keys()))" 2>/dev/null || echo ""))
+    service_keys=()
+    while IFS= read -r service; do
+        [ -n "$service" ] && service_keys+=("$service")
+    done < <(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('services', {}).keys()))" 2>/dev/null || echo "")
     total_services=${#service_keys[@]}
 fi
 
@@ -261,7 +267,7 @@ else
     print_header "Services for User: $USER_ID (Organization: $HZN_ORG_ID)"
     echo ""
     
-    if [ $total_services -eq 0 ]; then
+    if [ "$total_services" -eq 0 ]; then
         print_warning "No services found for user '$USER_ID'"
     else
         for service_key in "${service_keys[@]}"; do
@@ -326,7 +332,7 @@ if [ "$JSON_ONLY" = false ]; then
     echo ""
 
     # Summary of service visibility
-    if [ $total_services -gt 0 ]; then
+    if [ "$total_services" -gt 0 ]; then
         print_success "Successfully retrieved all services for user '$USER_ID' in organization '$HZN_ORG_ID'"
         echo ""
         echo "Service visibility legend:"

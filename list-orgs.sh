@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to select credentials from .env files and list Open Horizon organizations
-# Usage: ./list-orgs.sh
+# Usage: ./list-orgs.sh [OPTIONS] [env-file]
 
 # Strict error handling
 set -euo pipefail
@@ -10,11 +10,52 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
+# Show usage information
+show_usage() {
+    cat << EOF
+Usage: $(basename "$0") [OPTIONS] [env-file]
+
+List Open Horizon organizations and optionally view users in a selected organization.
+
+OPTIONS:
+    -h, --help      Show this help message and exit
+
+ARGUMENTS:
+    env-file        Optional: Path to .env file with credentials
+                    If not provided, will prompt to select from available .env files
+
+EXAMPLES:
+    $(basename "$0")                    # Interactive mode - select .env file
+    $(basename "$0") mycreds.env        # Use specific .env file
+
+REQUIRED ENVIRONMENT VARIABLES (in .env file):
+    HZN_EXCHANGE_URL          The Horizon Exchange API URL
+    HZN_ORG_ID                Your organization ID
+    HZN_EXCHANGE_USER_AUTH    User credentials (user:password)
+
+EOF
+    exit 0
+}
+
+# Parse command line arguments
+ENV_FILE_ARG=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_usage
+            ;;
+        *)
+            ENV_FILE_ARG="$1"
+            shift
+            ;;
+    esac
+done
+
 # Setup cleanup trap
 setup_cleanup_trap
 
 # Select and load credentials
-select_env_file || exit 1
+select_env_file "$ENV_FILE_ARG" || exit 1
 load_credentials "$selected_file" || exit 1
 
 # Display configuration
@@ -31,8 +72,7 @@ print_info "Fetching organizations from Exchange..."
 echo ""
 
 # Capture organization list output
-org_output=$(hzn exchange org list 2>&1)
-if [ $? -ne 0 ]; then
+if ! org_output=$(hzn exchange org list 2>&1); then
     echo "$org_output"
     echo ""
     print_error "Failed to list organizations"
@@ -84,7 +124,7 @@ echo ""
 
 # Prompt user to select an organization
 while true; do
-    read -p "Select an organization (0-${#orgs[@]}): " org_selection
+    read -r -p "Select an organization (0-${#orgs[@]}): " org_selection
     
     if [[ "$org_selection" == "0" ]]; then
         print_info "Exiting without viewing users"

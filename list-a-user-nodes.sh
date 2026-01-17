@@ -199,11 +199,17 @@ fi
 # Parse the response to get node names and details
 if [ "$JQ_AVAILABLE" = true ]; then
     # Use jq for better JSON parsing
-    node_names=($(echo "$response_body" | jq -r '.nodes | keys[]' 2>/dev/null || echo ""))
+    node_names=()
+    while IFS= read -r node; do
+        [ -n "$node" ] && node_names+=("$node")
+    done < <(echo "$response_body" | jq -r '.nodes | keys[]' 2>/dev/null || echo "")
     total_nodes=$(echo "$response_body" | jq -r '.nodes | length' 2>/dev/null || echo "0")
 else
     # Fallback to basic parsing without jq
-    node_names=($(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('nodes', {}).keys()))" 2>/dev/null || echo ""))
+    node_names=()
+    while IFS= read -r node; do
+        [ -n "$node" ] && node_names+=("$node")
+    done < <(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('nodes', {}).keys()))" 2>/dev/null || echo "")
     total_nodes=${#node_names[@]}
 fi
 
@@ -261,7 +267,7 @@ else
     print_header "Nodes for User: $USER_ID (Organization: $HZN_ORG_ID)"
     echo ""
     
-    if [ $total_nodes -eq 0 ]; then
+    if [ "$total_nodes" -eq 0 ]; then
         print_warning "No nodes found for user '$USER_ID'"
     else
         for node in "${node_names[@]}"; do
@@ -328,7 +334,7 @@ if [ "$JSON_ONLY" = false ]; then
     echo ""
 
     # Summary of node status
-    if [ $total_nodes -gt 0 ]; then
+    if [ "$total_nodes" -gt 0 ]; then
         print_success "Successfully retrieved all nodes for user '$USER_ID' in organization '$HZN_ORG_ID'"
         echo ""
         echo "Node status legend:"

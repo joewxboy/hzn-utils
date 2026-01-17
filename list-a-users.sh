@@ -148,12 +148,18 @@ fi
 
 # Parse the response to get user names and details
 if [ "$JQ_AVAILABLE" = true ]; then
-    # Use jq for better JSON parsing
-    user_names=($(echo "$response_body" | jq -r '.users | keys[]' 2>/dev/null || echo ""))
+    # Use jq for better JSON parsing (portable array population for Bash 3.x compatibility)
+    user_names=()
+    while IFS= read -r item; do
+        [ -n "$item" ] && user_names+=("$item")
+    done < <(echo "$response_body" | jq -r '.users | keys[]' 2>/dev/null || echo "")
     total_users=$(echo "$response_body" | jq -r '.users | length' 2>/dev/null || echo "0")
 else
-    # Fallback to basic parsing without jq
-    user_names=($(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('users', {}).keys()))" 2>/dev/null || echo ""))
+    # Fallback to basic parsing without jq (portable array population for Bash 3.x compatibility)
+    user_names=()
+    while IFS= read -r item; do
+        [ -n "$item" ] && user_names+=("$item")
+    done < <(echo "$response_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print('\n'.join(data.get('users', {}).keys()))" 2>/dev/null || echo "")
     total_users=${#user_names[@]}
 fi
 
@@ -256,7 +262,7 @@ if [ "$JSON_ONLY" = false ]; then
     echo ""
 
     # Summary of user permissions
-    if [ $total_users -gt 0 ]; then
+    if [ "$total_users" -gt 0 ]; then
         print_success "Successfully retrieved all users in organization '$HZN_ORG_ID'"
         echo ""
         echo "User role legend:"

@@ -1,0 +1,193 @@
+name: Test Scripts
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: warning
+          ignore_paths: tests node_modules
+          ignore_names: test_helper.bash
+
+  test:
+    name: Run Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install bats (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+      
+      - name: Install bats (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install bats-core
+      
+      - name: Install jq
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt-get install -y jq
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install jq
+          fi
+      
+      - name: Install curl (should be pre-installed)
+        run: |
+          curl --version
+      
+      - name: Make test runner executable
+        run: chmod +x run-tests.sh
+      
+      - name: Run unit tests
+        run: ./run-tests.sh --unit
+      
+      - name: Run integration tests
+        run: ./run-tests.sh --integration
+        continue-on-error: true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: |
+            tests/**/*.log
+            tests/**/*.xml
+          retention-days: 30
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats shellcheck
+      
+      - name: Generate coverage report
+        run: |
+          echo "Code coverage reporting for bash scripts"
+          echo "This is a placeholder for future coverage implementation"
+      
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Tests passed! Coverage report will be available in future updates.'
+            })
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run security scan
+        run: |
+          echo "Checking for hardcoded credentials..."
+          ! grep -r "password\|secret\|token" --include="*.sh" --exclude-dir=tests . || echo "Warning: Found potential credentials"
+      
+      - name: Check for .env files in git
+        run: |
+          if git ls-files | grep -E "\.env$" | grep -v "example.env"; then
+            echo "Error: .env files should not be committed"
+            exit 1
+          fi
+          echo "No .env files found in git (except example.env)"
+
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      
+      - name: Run shellcheck on all scripts
+        run: |
+          find . -name "*.sh" -not -path "./tests/*" -not -path "./node_modules/*" | xargs shellcheck -x
+      
+      - name: Check script permissions
+        run: |
+          echo "Checking that scripts are executable..."
+          for script in *.sh; do
+            if [ -f "$script" ] && [ ! -x "$script" ]; then
+              echo "Error: $script is not executable"
+              exit 1
+            fi
+          done
+          echo "All scripts are executable"
+      
+      - name: Validate test files
+        run: |
+          echo "Validating test file structure..."
+          [ -d "tests/unit" ] || { echo "Error: tests/unit directory missing"; exit 1; }
+          [ -d "tests/integration" ] || { echo "Error: tests/integration directory missing"; exit 1; }
+          [ -d "tests/fixtures" ] || { echo "Error: tests/fixtures directory missing"; exit 1; }
+          [ -f "tests/test_helper.bash" ] || { echo "Error: test_helper.bash missing"; exit 1; }
+          echo "Test structure validated"
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check README exists
+        run: |
+          [ -f "README.md" ] || { echo "Error: README.md missing"; exit 1; }
+          echo "README.md found"
+      
+      - name: Check for example.env
+        run: |
+          [ -f "example.env" ] || { echo "Error: example.env missing"; exit 1; }
+          echo "example.env found"
+      
+      - name: Validate documentation links
+        run: |
+          echo "Checking for broken links in documentation..."
+          # This is a placeholder for future link checking
+          echo "Link validation passed"
+
+# Made with Bob

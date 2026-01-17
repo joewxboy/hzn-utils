@@ -273,7 +273,7 @@ else
     print_header "Deployment Policies for User: $USER_ID (Organization: $HZN_ORG_ID)"
     echo ""
     
-    if [ $total_policies -eq 0 ]; then
+    if [ "$total_policies" -eq 0 ]; then
         print_warning "No deployment policies found for user '$USER_ID'"
     else
         for policy_key in "${policy_keys[@]}"; do
@@ -364,7 +364,7 @@ if [ "$JSON_ONLY" = false ]; then
     echo ""
 
     # Summary of deployment policies
-    if [ $total_policies -gt 0 ]; then
+    if [ "$total_policies" -gt 0 ]; then
         print_success "Successfully retrieved all deployment policies for user '$USER_ID' in organization '$HZN_ORG_ID'"
         echo ""
         echo "Deployment policy indicators:"
