@@ -357,6 +357,7 @@ setup_cleanup_trap() {
         }
     fi
     
+    # shellcheck disable=SC2064  # Intentional: expand cleanup_func now, not at signal time
     trap "$cleanup_func" EXIT INT TERM
 }
 
