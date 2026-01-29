@@ -36,6 +36,7 @@ This repository contains several utility scripts for managing Open Horizon insta
 
 ### Permission Scripts
 - **`can-i-list-users.sh`** - Check if user can list users in an organization
+- **`can-i-list-orgs.sh`** - Check if user can list organizations
 
 ### API-Based Scripts (using REST API)
 - **`list-a-orgs.sh`** - List organizations using REST API with multiple output modes
@@ -56,6 +57,7 @@ This repository contains several utility scripts for managing Open Horizon insta
   - Environment file selection
   - Tool availability checks (curl, jq, hzn)
   - Error handling and cleanup
+  - API key authentication support with automatic username resolution
 
 ## Shell Compatibility Notes
 
@@ -344,9 +346,51 @@ Test and validate Open Horizon credentials from .env files.
 - ✓ User has permission to list users
 - ✓ Counts users in organization
 
-### can-i-list-users.sh (Permission Verification)
+### can-i-list-orgs.sh (Organization Permission Verification)
 
-Advanced script to check if the authenticated user can list users in an organization using two-phase verification.
+Advanced script to check if the authenticated user can list organizations using two-phase verification.
+
+**Technical Implementation:**
+
+**Two-Phase Verification Process:**
+1. **Phase 1 - Predictive Check**: Fetches user info from `/orgs/{HZN_ORG_ID}/users/{AUTH_USER}` and analyzes `admin` and `hubAdmin` status to predict permission
+2. **Phase 2 - Actual Verification**: Calls `GET /orgs` API endpoint to verify actual permission
+3. **Phase 3 - Comparison**: Compares predicted vs actual results and reports status (CONFIRMED or MISMATCH)
+
+**Permission Logic:**
+- **Hub Admin** (`hubAdmin: true`): Can list ALL organizations (predicted: YES, scope: ALL)
+- **Org Admin** (`admin: true`, `hubAdmin: false`): Can only list their own organization (predicted: YES, scope: OWN)
+- **Regular User** (`admin: false`, `hubAdmin: false`): Cannot list organizations (predicted: NO, scope: NONE)
+
+**Key Differences from can-i-list-users.sh:**
+1. **No target organization parameter**: Listing orgs is a global operation, not org-specific
+2. **Different API endpoint**: Uses `/orgs` instead of `/orgs/{org}/users`
+3. **Simpler permission model**: Only hubAdmin can list ALL orgs; org admins see only their own
+4. **Organization count tracking**: Counts and displays number of organizations returned
+5. **Scope indication**: Shows whether user can see ALL orgs or just OWN org
+
+**Output Modes:**
+- **Default**: Human-readable with color-coded status indicators
+- **Verbose** (`--verbose`): Includes full API responses with JSON formatting
+- **JSON** (`--json`): Machine-readable output for automation
+
+**Exit Codes:**
+- `0`: User CAN list organizations (actual permission granted)
+- `1`: User CANNOT list organizations (actual permission denied)
+- `2`: Error (invalid arguments, API error, authentication failure)
+
+**API Key Authentication:**
+Like `can-i-list-users.sh`, this script supports API key authentication and automatically resolves the username before performing permission checks.
+
+**Integration Points:**
+- Uses `lib/common.sh` for credential management and output formatting
+- Shares credential loading logic with other API-based scripts
+- Compatible with multiple `.env` file support
+- Supports API key authentication with automatic username resolution
+
+### can-i-list-users.sh (User Permission Verification)
+
+Advanced script to check if the authenticated user can list users using three-level verification (general to specific).
 
 **Usage:**
 ```bash
@@ -369,16 +413,131 @@ Advanced script to check if the authenticated user can list users in an organiza
 - `-j, --json` - Output JSON only (for scripting/automation)
 - `-h, --help` - Show help message
 
+**Three-Level Verification (General → Specific):**
+
+**Level 1: List ALL Users (across all organizations)**
+- **Endpoint**: Tests access to different organization's users
+- **Permission Required**: Hub Admin only
+- **Purpose**: Verify if user can access users across ALL organizations
+
+**Level 2: List Users in Target Organization**
+- **Endpoint**: `GET /orgs/{target_org}/users`
+- **Permission Required**: Org Admin (in target org) or Hub Admin
+- **Purpose**: Verify if user can list users in the specified organization
+
+**Level 3: View Own User Information**
+- **Endpoint**: `GET /orgs/{auth_org}/users/{auth_user}`
+- **Permission Required**: Any authenticated user (self-access)
+- **Purpose**: Verify user can at least access their own information
+
 **Features:**
-- Two-phase verification (predictive + actual API check)
-- Compares predicted vs actual permissions
-- Detailed troubleshooting for permission mismatches
+- Progressive permission testing from broadest to narrowest scope
+- Shows exactly what the user can and cannot access
+- Detailed troubleshooting showing where permissions break down
 - Multiple output modes (human-readable, JSON, verbose)
-- Exit codes: 0 (can list), 1 (cannot list), 2 (error)
+- **API key authentication support** - Automatically resolves username from API key
+- Exit codes: 0 (can list org users), 1 (cannot list), 2 (error)
+
+**API Key Authentication:**
+When using API key authentication (`HZN_EXCHANGE_USER_AUTH=apikey:<key>`), the script automatically:
+1. Detects the API key format
+2. Queries `/orgs/{org}/users/apikey` to resolve the actual username
+3. Uses the resolved username for permission checks
 
 ## Environment File Configuration
 
 All scripts use `.env` files for credential management. Create one or more `.env` files with the following format:
+
+
+### can-i-list-services.sh (Service Permission Verification)
+
+Advanced script to check if the authenticated user can list services at different access levels using three-level verification (general to specific).
+
+**Technical Implementation:**
+
+**Three-Level Verification Process:**
+1. **Level 1 - IBM Public Services**: Tests `GET /orgs/{ibm_org}/services` to verify access to IBM's public service catalog
+2. **Level 2 - Org Public Services**: Tests `GET /orgs/{target_org}/services` to verify access to organization's public services
+3. **Level 3 - Own Services**: Tests `GET /orgs/{auth_org}/services?owner={auth_org}/{auth_user}` to verify access to user's own services
+
+**Service Visibility Model:**
+- **Public Services**: Visible to all authenticated users across all organizations
+- **Private Services**: Only visible to the service owner
+- **IBM Services**: Special organization containing shared public services accessible to all users
+
+**Permission Logic:**
+
+**Level 1: IBM Public Services**
+- **Prediction**: Always YES for authenticated users
+- **Reason**: IBM public services are accessible to all authenticated users
+- **Filtering**: Counts only services where `public: true`
+- **Scope**: IBM organization (configurable via `--ibm-org` flag)
+
+**Level 2: Organization Public Services**
+- **Prediction**: Always YES for authenticated users
+- **Reason**: Public services in any organization are accessible to all users
+- **Filtering**: Counts only services where `public: true`
+- **Scope**: Target organization (specified via `--org` flag or defaults to auth org)
+
+**Level 3: Own Services (Public + Private)**
+- **Prediction**: Always YES for authenticated users
+- **Reason**: Users can always list their own services
+- **Filtering**: Counts all services (both public and private)
+- **Scope**: Services owned by authenticated user in auth organization
+
+**Key Differences from Other Permission Scripts:**
+
+1. **No Admin Requirements**: Unlike user/org listing, service listing doesn't require admin privileges
+2. **Public/Private Filtering**: Must accurately filter and count services by visibility
+3. **IBM Organization**: Special handling for IBM org as a shared service catalog
+4. **Owner Parameter**: Uses `owner={org}/{user}` format for Level 3 queries
+5. **Service Counting**: Tracks total, public, and private service counts separately
+
+**Output Modes:**
+- **Default**: Human-readable with service counts at each level
+- **Verbose** (`--verbose`): Includes full API responses with JSON formatting
+- **JSON** (`--json`): Machine-readable output for automation
+
+**Exit Codes:**
+- `0`: User CAN list services at all tested levels
+- `1`: User CANNOT list services at one or more levels (but can list own)
+- `2`: Error (invalid arguments, API error, authentication failure)
+
+**Service Filtering Implementation:**
+
+```bash
+# For Level 1 & 2 (public services only):
+if [ "$JQ_AVAILABLE" = true ]; then
+  public_count=$(echo "$response" | jq '[.services[] | select(.public == true)] | length')
+else
+  # Fallback parsing for public services
+  public_count=$(echo "$response" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len([s for s in data.get('services', {}).values() if s.get('public', False)]))")
+fi
+
+# For Level 3 (all own services):
+total_count=$(echo "$response" | jq '.services | length')
+public_count=$(echo "$response" | jq '[.services[] | select(.public == true)] | length')
+private_count=$((total_count - public_count))
+```
+
+**API Key Authentication:**
+Like other permission scripts, this script supports API key authentication and automatically resolves the username before performing permission checks.
+
+**Integration Points:**
+- Uses `lib/common.sh` for credential management and output formatting
+- Shares credential loading logic with other API-based scripts
+- Compatible with multiple `.env` file support
+- Supports API key authentication with automatic username resolution
+- Uses `test_api_access` and `count_json_items` functions from common library
+
+**Special Considerations:**
+1. **IBM Org Configuration**: Supports custom IBM org names via `--ibm-org` flag (default: "IBM")
+2. **Public Service Filtering**: Must accurately filter services by `public: true` field for Levels 1 & 2
+3. **Service Counting**: Distinguishes between total services and public-only services
+4. **Owner Format**: Uses `{org}/{user}` format for owner parameter in Level 3
+5. **Error Handling**: Handles cases where IBM org doesn't exist or is inaccessible
+6. **Backward Compatibility**: Follows same patterns as `can-i-list-users.sh` and `can-i-list-orgs.sh`
+
 
 ```bash
 HZN_EXCHANGE_URL=https://open-horizon.lfedge.iol.unh.edu:3090/v1/

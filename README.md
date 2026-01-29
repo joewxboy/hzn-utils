@@ -54,6 +54,8 @@ This repository contains several utility scripts for managing Open Horizon insta
 
 ### Permission Scripts
 - **`can-i-list-users.sh`** - Check if user can list users in an organization
+- **`can-i-list-orgs.sh`** - Check if user can list organizations
+- **`can-i-list-services.sh`** - Check if user can list services at different access levels
 
 ### Testing Scripts
 - **`test-credentials.sh`** - Test and validate your Open Horizon credentials
@@ -396,9 +398,44 @@ Advanced script using REST API directly to list all nodes in an organization.
 - `[Device]` (Blue) - Edge device node
 - `[Cluster]` (Magenta) - Edge cluster node
 
-### can-i-list-users.sh (Permission Verification)
+### can-i-list-orgs.sh (Organization Permission Verification)
 
-Advanced script to check if the authenticated user can list users in an organization using two-phase verification.
+Advanced script to check if the authenticated user can list organizations using three-level verification (general to specific).
+
+**Usage:**
+```bash
+# Check permission interactively
+./can-i-list-orgs.sh
+
+# JSON output for automation
+./can-i-list-orgs.sh --json mycreds.env
+
+# Verbose mode for debugging
+./can-i-list-orgs.sh --verbose
+```
+
+**Options:**
+- `-v, --verbose` - Show detailed output with API responses
+- `-j, --json` - Output JSON only (for scripting/automation)
+- `-h, --help` - Show help message
+
+**Three-Level Testing (General → Specific):**
+1. **Level 1**: List ALL organizations - Hub Admin (all) or Org Admin (own)
+2. **Level 2**: View auth organization details - Organization member
+3. **Level 3**: View user's role in organization - Any authenticated user
+
+**Features:**
+- Progressive permission testing from broadest to narrowest scope
+- Shows exactly what the user can and cannot access
+- Displays scope of access (ALL orgs vs OWN org only)
+- Shows user's role in the organization
+- Multiple output modes (human-readable, JSON, verbose)
+- API key authentication support with automatic username resolution
+- Exit codes: 0 (can list orgs), 1 (cannot list), 2 (error)
+
+### can-i-list-users.sh (User Permission Verification)
+
+Advanced script to check if the authenticated user can list users using three-level verification (general to specific).
 
 **Usage:**
 ```bash
@@ -421,12 +458,69 @@ Advanced script to check if the authenticated user can list users in an organiza
 - `-j, --json` - Output JSON only (for scripting/automation)
 - `-h, --help` - Show help message
 
+**Three-Level Testing (General → Specific):**
+1. **Level 1**: List ALL users (across all organizations) - Hub Admin only
+2. **Level 2**: List users in target organization - Org Admin or Hub Admin
+3. **Level 3**: View own user information - Any authenticated user
+
 **Features:**
-- Two-phase verification (predictive + actual API check)
-- Compares predicted vs actual permissions
-- Detailed troubleshooting for permission mismatches
+- Progressive permission testing from broadest to narrowest scope
+- Shows exactly what the user can and cannot access
+- Detailed troubleshooting showing where permissions break down
 - Multiple output modes (human-readable, JSON, verbose)
-- Exit codes: 0 (can list), 1 (cannot list), 2 (error)
+- API key authentication support with automatic username resolution
+
+### can-i-list-services.sh (Service Permission Verification)
+
+Advanced script to check if the authenticated user can list services at different access levels using three-level verification (general to specific).
+
+**Usage:**
+```bash
+# Check permission in auth organization
+./can-i-list-services.sh
+
+# Check permission in different organization
+./can-i-list-services.sh -o other-org
+
+# Use custom IBM organization name
+./can-i-list-services.sh --ibm-org myibm
+
+# JSON output for automation
+./can-i-list-services.sh --json mycreds.env
+
+# Verbose mode for debugging
+./can-i-list-services.sh --verbose
+```
+
+**Options:**
+- `-o, --org ORG` - Target organization to check (default: auth org)
+- `-i, --ibm-org ORG` - IBM organization name (default: IBM)
+- `-v, --verbose` - Show detailed output with API responses
+- `-j, --json` - Output JSON only (for scripting/automation)
+- `-h, --help` - Show help message
+
+**Service Visibility Rules:**
+- Users can list their own public and private services
+- Users can list all public services in their organization
+- Users can list all public services in the IBM organization
+- Private services are only visible to their owner
+
+**Three-Level Testing (General → Specific):**
+1. **Level 1**: List IBM public services - Any authenticated user
+2. **Level 2**: List organization's public services - Any authenticated user
+3. **Level 3**: List own services (public + private) - Any authenticated user
+
+**Features:**
+- Progressive permission testing from broadest to narrowest scope
+- Accurate public/private service filtering and counting
+- Configurable IBM organization name
+- Shows service counts at each level (total, public, private)
+- Multiple output modes (human-readable, JSON, verbose)
+- API key authentication support with automatic username resolution
+- Exit codes: 0 (can list at all levels), 1 (cannot list at one or more levels), 2 (error)
+
+
+- Exit codes: 0 (can list org users), 1 (cannot list), 2 (error)
 
 ### test-credentials.sh (Credential Testing)
 
@@ -471,11 +565,21 @@ Test Open Horizon CLI installation and configuration.
 
 All scripts use `.env` files for credential management. Create one or more `.env` files with the following format:
 
+### Username/Password Authentication
 ```bash
 HZN_EXCHANGE_URL=https://open-horizon.lfedge.iol.unh.edu:3090/v1/
 HZN_ORG_ID=myorg
 HZN_EXCHANGE_USER_AUTH=myuser:mypassword
 ```
+
+### API Key Authentication
+```bash
+HZN_EXCHANGE_URL=https://open-horizon.lfedge.iol.unh.edu:3090/v1/
+HZN_ORG_ID=myorg
+HZN_EXCHANGE_USER_AUTH=apikey:f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
+**Note**: When using API key authentication, the scripts will automatically resolve the actual username by querying the Exchange API. This is particularly useful for the `can-i-list-*` permission verification scripts.
 
 **Multiple Environment Support:**
 You can create multiple `.env` files for different environments:
