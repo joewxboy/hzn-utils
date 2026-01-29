@@ -724,7 +724,7 @@ When adding new features:
    - Design decisions
    - Integration points with other scripts
 
-3. Update `ROADMAP.md` if:
+3. Update `.cursor/scratchpad.md` (project roadmap) if:
    - Completing a roadmap item
    - Identifying new improvement opportunities
 
