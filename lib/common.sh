@@ -181,11 +181,25 @@ load_credentials() {
 }
 
 # Parse authentication credentials from HZN_EXCHANGE_USER_AUTH
-# Sets global variables: FULL_AUTH, AUTH_USER, AUTH_PASS
+# Sets global variables: FULL_AUTH, AUTH_USER, AUTH_PASS, IS_API_KEY
 # HZN_EXCHANGE_USER_AUTH can be in format:
 #   - user:password (will prepend HZN_ORG_ID)
 #   - org/user:password (will use as-is)
+#   - apikey:<api-key-value> (API key authentication)
 parse_auth() {
+    # Initialize IS_API_KEY flag
+    IS_API_KEY=false
+    
+    # Check if using API key authentication
+    if [[ "$HZN_EXCHANGE_USER_AUTH" == apikey:* ]]; then
+        IS_API_KEY=true
+        AUTH_USER="apikey"
+        AUTH_PASS="${HZN_EXCHANGE_USER_AUTH#apikey:}"
+        FULL_AUTH="${HZN_ORG_ID}/${AUTH_USER}:${AUTH_PASS}"
+        export IS_API_KEY
+        return 0
+    fi
+    
     if [[ "$HZN_EXCHANGE_USER_AUTH" == *"/"* ]]; then
         # Already has org/user:password format
         FULL_AUTH="$HZN_EXCHANGE_USER_AUTH"
@@ -198,6 +212,73 @@ parse_auth() {
         AUTH_PASS="${HZN_EXCHANGE_USER_AUTH#*:}"
         FULL_AUTH="${HZN_ORG_ID}/${AUTH_USER}:${AUTH_PASS}"
     fi
+    
+    export IS_API_KEY
+}
+
+# Resolve actual username when using API key authentication
+# This function makes an API call to get the user info and extracts the real username
+# Sets global variable: AUTH_USER (updates from "apikey" to actual username)
+# Requires: BASE_URL, FULL_AUTH, HZN_ORG_ID to be set
+# Returns: 0 on success, 1 on failure
+resolve_apikey_username() {
+    if [ "$IS_API_KEY" != true ]; then
+        # Not using API key, nothing to resolve
+        return 0
+    fi
+    
+    if [ "$JSON_ONLY" != true ]; then
+        print_info "Resolving username from API key..."
+    fi
+    
+    # Make API call to get user info using apikey
+    local user_response
+    user_response=$(curl -sS -k -w "\n%{http_code}" -u "$FULL_AUTH" "${BASE_URL}/orgs/${HZN_ORG_ID}/users/apikey" 2>&1)
+    
+    local user_http_code
+    user_http_code=$(echo "$user_response" | tail -n1)
+    local user_body
+    user_body=$(echo "$user_response" | sed '$d')
+    
+    if [ "$user_http_code" -ne 200 ]; then
+        print_error "Failed to resolve username from API key (HTTP $user_http_code)"
+        if [ "$JSON_ONLY" != true ]; then
+            echo ""
+            echo "Response: $user_body"
+            echo ""
+            echo "Troubleshooting:"
+            echo "  1. Verify the API key is valid and not expired"
+            echo "  2. Check that the API key belongs to organization '$HZN_ORG_ID'"
+            echo "  3. Ensure the Exchange URL is correct: $BASE_URL"
+        fi
+        return 1
+    fi
+    
+    # Extract username from response
+    # Response format: {"users": {"org/username": {...}}}
+    local full_username
+    if [ "$JQ_AVAILABLE" = true ]; then
+        full_username=$(echo "$user_body" | jq -r '.users | keys[0]' 2>/dev/null)
+    else
+        # Fallback: extract first key from users object
+        full_username=$(echo "$user_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print(list(data.get('users', {}).keys())[0])" 2>/dev/null)
+    fi
+    
+    if [ -z "$full_username" ] || [ "$full_username" = "null" ]; then
+        print_error "Failed to extract username from API response"
+        return 1
+    fi
+    
+    # Extract just the username part (after the /)
+    AUTH_USER="${full_username#*/}"
+    
+    if [ "$JSON_ONLY" != true ]; then
+        print_success "Resolved username: $AUTH_USER"
+        echo ""
+    fi
+    
+    export AUTH_USER
+    return 0
 }
 
 # Display current configuration
@@ -361,12 +442,118 @@ setup_cleanup_trap() {
     trap "$cleanup_func" EXIT INT TERM
 }
 
+# Test API endpoint and return result
+# Arguments:
+#   $1 - API endpoint (relative to BASE_URL)
+#   $2 - Description of what's being tested
+# Sets global variables: test_http_code, test_response_body, test_can_access
+# Returns: 0 on success (regardless of permission), 1 on error
+test_api_access() {
+    local endpoint="$1"
+    local description="$2"
+    
+    if [ "$JSON_ONLY" != true ]; then
+        print_info "Testing: $description"
+    fi
+    
+    # Make the API call
+    local response
+    response=$(curl -sS -k -w "\n%{http_code}" -u "$FULL_AUTH" "${BASE_URL}${endpoint}" 2>&1)
+    
+    # Extract HTTP status code and body
+    test_http_code=$(echo "$response" | tail -n1)
+    test_response_body=$(echo "$response" | sed '$d')
+    
+    # Determine if access was granted
+    if [ "$test_http_code" -eq 200 ]; then
+        test_can_access=true
+    else
+        test_can_access=false
+    fi
+    
+    # Export for use by calling scripts
+    export test_http_code test_response_body test_can_access
+    
+    return 0
+}
+
+# Format and display level test result
+# Arguments:
+#   $1 - Level number (1, 2, 3)
+#   $2 - Level description
+#   $3 - Predicted result (true/false)
+#   $4 - Predicted reason
+#   $5 - Actual result (true/false)
+#   $6 - Actual reason
+#   $7 - HTTP code
+# Returns: 0 always
+format_level_result() {
+    local level="$1"
+    local description="$2"
+    local predicted="$3"
+    local predicted_reason="$4"
+    local actual="$5"
+    local actual_reason="$6"
+    local http_code="$7"
+    
+    if [ "$JSON_ONLY" = true ]; then
+        return 0
+    fi
+    
+    echo ""
+    echo "Level $level: $description"
+    
+    # Display predicted result
+    if [ "$predicted" = "true" ]; then
+        echo -e "  Predicted: ${GREEN}YES${NC} - $predicted_reason"
+    else
+        echo -e "  Predicted: ${RED}NO${NC} - $predicted_reason"
+    fi
+    
+    # Display actual result
+    if [ "$actual" = "true" ]; then
+        echo -e "  Actual:    ${GREEN}YES${NC} - $actual_reason (HTTP $http_code)"
+    else
+        echo -e "  Actual:    ${RED}NO${NC} - $actual_reason (HTTP $http_code)"
+    fi
+    
+    # Display status (confirmed or mismatch)
+    if [ "$predicted" = "$actual" ]; then
+        echo -e "  Status:    ${GREEN}✓ CONFIRMED${NC}"
+    else
+        echo -e "  Status:    ${YELLOW}! MISMATCH${NC}"
+    fi
+    
+    return 0
+}
+
+# Count items in JSON response
+# Arguments:
+#   $1 - JSON response body
+#   $2 - Key to count (e.g., "users", "orgs")
+# Returns: Count via stdout
+count_json_items() {
+    local json_body="$1"
+    local key="$2"
+    local count=0
+    
+    if [ "$JQ_AVAILABLE" = true ]; then
+        count=$(echo "$json_body" | jq -r ".$key | length" 2>/dev/null || echo "0")
+    else
+        count=$(echo "$json_body" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data.get('$key', {})))" 2>/dev/null || echo "0")
+    fi
+    
+    echo "$count"
+}
+
 # Export functions and variables for use in other scripts
 export -f print_info print_success print_error print_warning print_header
 export -f find_env_files select_env_file load_credentials parse_auth
+export -f resolve_apikey_username
 export -f display_config check_hzn_cli check_hzn_agent check_curl check_jq
 export -f validate_url validate_org_id make_api_call validate_json
 export -f setup_cleanup_trap
+export -f test_api_access format_level_result count_json_items
 
 # Export color codes for use in other scripts
 export RED GREEN YELLOW BLUE CYAN MAGENTA NC

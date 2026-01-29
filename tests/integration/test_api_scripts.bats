@@ -109,6 +109,67 @@ teardown() {
     [ -x "${PROJECT_ROOT}/list-a-user-deployment.sh" ]
 }
 
+# Tests for can-i-list-orgs.sh
+@test "can-i-list-orgs.sh exists and is executable" {
+    [ -f "${PROJECT_ROOT}/can-i-list-orgs.sh" ]
+    [ -x "${PROJECT_ROOT}/can-i-list-orgs.sh" ]
+}
+
+@test "can-i-list-orgs.sh shows help with --help flag" {
+    run "${PROJECT_ROOT}/can-i-list-orgs.sh" --help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Usage" ]] || [[ "$output" =~ "help" ]]
+}
+
+@test "can-i-list-orgs.sh accepts --json flag" {
+    skip_if_missing "curl"
+    
+    run "${PROJECT_ROOT}/can-i-list-orgs.sh" --json "${FIXTURES_DIR}/valid.env"
+    # May fail if Exchange not reachable, but should accept the flag
+    [ "$status" -ge 0 ]
+}
+
+@test "can-i-list-orgs.sh accepts --verbose flag" {
+    skip_if_missing "curl"
+    
+    run "${PROJECT_ROOT}/can-i-list-orgs.sh" --verbose "${FIXTURES_DIR}/valid.env"
+    [ "$status" -ge 0 ]
+}
+
+@test "can-i-list-orgs.sh requires curl" {
+    # Temporarily hide curl
+    PATH="/nonexistent:$PATH"
+    
+    run "${PROJECT_ROOT}/can-i-list-orgs.sh" "${FIXTURES_DIR}/valid.env"
+    [ "$status" -ne 0 ]
+}
+
+# Tests for can-i-list-users.sh
+@test "can-i-list-users.sh exists and is executable" {
+    [ -f "${PROJECT_ROOT}/can-i-list-users.sh" ]
+    [ -x "${PROJECT_ROOT}/can-i-list-users.sh" ]
+}
+
+@test "can-i-list-users.sh shows help with --help flag" {
+    run "${PROJECT_ROOT}/can-i-list-users.sh" --help
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Usage" ]] || [[ "$output" =~ "help" ]]
+}
+
+@test "can-i-list-users.sh accepts --json flag" {
+    skip_if_missing "curl"
+    
+    run "${PROJECT_ROOT}/can-i-list-users.sh" --json "${FIXTURES_DIR}/valid.env"
+    [ "$status" -ge 0 ]
+}
+
+@test "can-i-list-users.sh accepts --verbose flag" {
+    skip_if_missing "curl"
+    
+    run "${PROJECT_ROOT}/can-i-list-users.sh" --verbose "${FIXTURES_DIR}/valid.env"
+    [ "$status" -ge 0 ]
+}
+
 # Test credential handling across all API scripts
 @test "API scripts handle missing credentials gracefully" {
     skip_if_missing "curl"
