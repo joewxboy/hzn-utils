@@ -422,30 +422,32 @@ elif [ "$VERBOSE" = true ]; then
         echo ""
         
         # Display scripts in this category
-        while IFS= read -r script_entry; do
-            IFS='|' read -r script_name _ description requires_org_admin requires_hub_admin notes <<< "$script_entry"
+        for script_entry in "${runnable_scripts[@]}"; do
+            IFS='|' read -r script_name cat description requires_org_admin requires_hub_admin notes <<< "$script_entry"
             
-            echo "$counter. $script_name"
-            echo "   Description:  $description"
-            echo "   Path:         ./$script_name"
-            echo -e "   Runnable:     ${GREEN}✓ YES${NC}"
-            
-            # Determine required permission level
-            if [ "$requires_hub_admin" = "true" ]; then
-                echo "   Requires:     Hub Admin"
-            elif [ "$requires_org_admin" = "true" ]; then
-                echo "   Requires:     Org Admin or Hub Admin"
-            else
-                echo "   Requires:     Any authenticated user"
+            if [ "$cat" = "$category" ]; then
+                echo "$counter. $script_name"
+                echo "   Description:  $description"
+                echo "   Path:         ./$script_name"
+                echo -e "   Runnable:     ${GREEN}✓ YES${NC}"
+                
+                # Determine required permission level
+                if [ "$requires_hub_admin" = "true" ]; then
+                    echo "   Requires:     Hub Admin"
+                elif [ "$requires_org_admin" = "true" ]; then
+                    echo "   Requires:     Org Admin or Hub Admin"
+                else
+                    echo "   Requires:     Any authenticated user"
+                fi
+                
+                if [ -n "$notes" ]; then
+                    echo "   Notes:        $notes"
+                fi
+                echo ""
+                
+                ((counter++))
             fi
-            
-            if [ -n "$notes" ]; then
-                echo "   Notes:        $notes"
-            fi
-            echo ""
-            
-            ((counter++))
-        done <<< "${category_scripts[$category]}"
+        done
     done
     
     # Show restricted scripts if any
