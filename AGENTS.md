@@ -19,6 +19,7 @@ hzn-utils/
 ├── list-a-user-nodes.sh       # API-based user node listing
 ├── list-a-user-services.sh    # API-based user service listing
 ├── list-a-user-deployment.sh  # API-based user deployment policy listing
+├── monitor-nodes.sh           # Real-time node monitoring utility
 ├── test-credentials.sh        # Credential validation tool
 ├── test-hzn.sh                # CLI installation test
 └── *.env                      # Credential files (not in git)
@@ -46,6 +47,9 @@ This repository contains several utility scripts for managing Open Horizon insta
 - **`list-a-user-nodes.sh`** - List nodes for a specific user using REST API
 - **`list-a-user-services.sh`** - List services for a specific user using REST API
 - **`list-a-user-deployment.sh`** - List deployment policies for a specific user using REST API
+
+### Monitoring Scripts
+- **`monitor-nodes.sh`** - Real-time node monitoring utility (like 'top' for nodes)
 
 ### Testing Scripts
 - **`test-hzn.sh`** - Test Open Horizon CLI installation and configuration
@@ -734,3 +738,324 @@ When adding new features:
    - Workarounds for compatibility issues
 
 This guide ensures consistent, maintainable, and secure code across all Open Horizon admin utilities.
+
+### monitor-nodes.sh (Real-Time Node Monitoring)
+
+Real-time monitoring utility for Open Horizon nodes, functioning like the `top` command for system processes. Provides a continuously updating display of node status sorted by most recent heartbeat activity.
+
+**Technical Implementation:**
+
+**Core Architecture:**
+1. **Initialization Phase:**
+   - Parse command line arguments (interval, user, output mode)
+   - Load credentials from .env file
+   - Validate configuration
+   - Set up terminal control (hide cursor, trap signals)
+
+2. **Data Fetching:**
+   - API endpoint: `GET /orgs/{orgid}/nodes?owner={org/userid}`
+   - Extracts node metadata including `lastHeartbeat` timestamp
+   - Parses ISO 8601 UTC timestamps with nanosecond precision
+   - Handles both jq and Python fallback for JSON parsing
+
+3. **Data Processing:**
+   - Converts ISO 8601 timestamps to Unix epoch seconds
+   - Calculates time difference from current time
+   - Sorts nodes by heartbeat timestamp (most recent first)
+   - Categorizes nodes by heartbeat age (active/stale/inactive)
+   - Formats timestamps as human-readable relative time
+
+4. **Display Loop:**
+   - Clears screen (in interactive mode)
+   - Renders header with summary statistics
+   - Displays table with node information
+   - Shows footer with interactive controls
+   - Sleeps for configured interval
+   - Repeats until user exits
+
+**Key Implementation Details:**
+
+**Timestamp Handling:**
+```bash
+# Convert ISO 8601 to Unix epoch
+timestamp_to_seconds() {
+    local timestamp="$1"
+    timestamp="${timestamp%\[UTC\]}"  # Remove [UTC] suffix
+    # Try Linux date format first, then macOS
+    if date -d "$timestamp" +%s 2>/dev/null; then
+        return 0
+    elif date -j -f "%Y-%m-%dT%H:%M:%S" "${timestamp%.*}" +%s 2>/dev/null; then
+        return 0
+    else
+        echo "0"
+    fi
+}
+```
+
+**Human-Readable Time Formatting:**
+```bash
+format_time_ago() {
+    local diff=$((now - then))
+    if [ $diff -lt 60 ]; then
+        echo "${diff}s ago"
+    elif [ $diff -lt 3600 ]; then
+        echo "$((diff / 60))m ago"
+    elif [ $diff -lt 86400 ]; then
+        echo "$((diff / 3600))h ago"
+    else
+        echo "$((diff / 86400))d ago"
+    fi
+}
+```
+
+**Status Determination Logic:**
+Since the Exchange API doesn't provide a `configstate` field in the node response, status is determined by heartbeat age:
+- **Active** (Green): `lastHeartbeat` < 2 minutes ago
+- **Stale** (Yellow): `lastHeartbeat` 2-10 minutes ago
+- **Inactive** (Red): `lastHeartbeat` > 10 minutes ago
+
+**Color Coding Implementation:**
+```bash
+get_heartbeat_color() {
+    local diff=$((now - then))
+    if [ $diff -lt 120 ]; then
+        echo "$GREEN"      # < 2 minutes
+    elif [ $diff -lt 600 ]; then
+        echo "$YELLOW"     # 2-10 minutes
+    else
+        echo "$RED"        # > 10 minutes
+    fi
+}
+```
+
+**Terminal Control:**
+- Uses `tput civis` to hide cursor during monitoring
+- Uses `tput cnorm` to restore cursor on exit
+- Implements trap handler for graceful cleanup on INT/TERM signals
+- Uses `clear` command to refresh display between updates
+
+**Interactive Input Handling:**
+```bash
+# Non-blocking read with timeout
+if read -t "$REFRESH_INTERVAL" -n 1 key 2>/dev/null; then
+    case "$key" in
+        q|Q) break ;;           # Quit
+        r|R) fetch_and_display_nodes ;;  # Force refresh
+    esac
+else
+    # Timeout reached, auto-refresh
+    fetch_and_display_nodes
+fi
+```
+
+**Node Data Structure:**
+Each node is stored as a pipe-delimited string for sorting:
+```
+{timestamp}|{name}|{type}|{arch}|{pattern}|{heartbeat}
+```
+
+This format allows efficient sorting by timestamp using `sort -t'|' -k1 -rn`.
+
+**API Response Fields Used:**
+- `lastHeartbeat` - Primary field for monitoring and sorting
+- `name` - Node identifier (without org prefix)
+- `nodeType` - "device" or "cluster"
+- `arch` - Architecture (arm64, amd64, etc.)
+- `pattern` - Deployment pattern (empty string if none)
+- `owner` - Full owner identifier (org/user format)
+
+**Output Modes:**
+
+1. **Interactive Mode (Default):**
+   - Continuous monitoring with screen refresh
+   - Color-coded status indicators
+   - Summary statistics in header
+   - Interactive controls (q, r)
+   - Cursor hidden during operation
+
+2. **Once Mode (`--once`):**
+   - Single execution, no loop
+   - Display output once and exit
+   - Useful for scripting and automation
+   - Cursor remains visible
+
+3. **JSON Mode (`--json`):**
+   - Raw JSON output from API
+   - No formatting or color codes
+   - Implies `--once` mode
+   - Suitable for piping to other tools
+
+**Cross-Platform Compatibility:**
+
+**Date Command Differences:**
+- **Linux**: `date -d "$timestamp" +%s`
+- **macOS**: `date -j -f "%Y-%m-%dT%H:%M:%S" "$timestamp" +%s`
+- Script tries both formats for maximum compatibility
+
+**Terminal Capabilities:**
+- Uses `tput` commands with error suppression (`2>/dev/null || true`)
+- Gracefully degrades if terminal doesn't support cursor control
+- Color codes can be disabled with `--no-color` flag
+
+**Performance Considerations:**
+
+1. **API Call Frequency:**
+   - Default 10-second refresh interval balances responsiveness and load
+   - Configurable via `-i` flag (minimum 1 second)
+   - Single API call per refresh (efficient)
+
+2. **JSON Parsing:**
+   - Prefers `jq` for performance (if available)
+   - Falls back to Python for compatibility
+   - Parses entire response once, extracts all needed fields
+
+3. **Sorting:**
+   - Uses Unix `sort` command (highly optimized)
+   - Sorts by numeric timestamp (fast)
+   - Reverse order for most recent first
+
+**Error Handling:**
+
+1. **API Failures:**
+   - Displays error message with HTTP status code
+   - Shows response body for debugging
+   - Provides troubleshooting tips
+   - Exits gracefully (doesn't loop on errors)
+
+2. **Invalid JSON:**
+   - Validates JSON before parsing
+   - Shows raw response on validation failure
+   - Prevents script crashes from malformed data
+
+3. **Signal Handling:**
+   - Trap handler for EXIT, INT, TERM signals
+   - Always restores cursor visibility
+   - Clean terminal state on exit
+
+**Integration Points:**
+
+1. **Common Library (`lib/common.sh`):**
+   - Uses `select_env_file()` for credential selection
+   - Uses `load_credentials()` for .env file loading
+   - Uses `parse_auth()` for authentication parsing
+   - Uses `check_curl()` and `check_jq()` for dependency checks
+   - Uses color code constants (RED, GREEN, YELLOW, etc.)
+   - Uses `print_*()` functions for consistent output
+
+2. **Credential Management:**
+   - Supports multiple .env files
+   - Interactive selection if not specified
+   - Validates required environment variables
+   - Extracts user ID from credentials if not provided
+
+3. **API Authentication:**
+   - Uses same authentication format as other scripts
+   - Supports both `user:password` and `org/user:password` formats
+   - Compatible with API key authentication (via common library)
+
+**Design Decisions:**
+
+1. **Why `lastHeartbeat` over `lastUpdated`:**
+   - `lastHeartbeat` specifically tracks node check-ins
+   - `lastUpdated` can change for other reasons (config updates, etc.)
+   - More accurate indicator of node health and activity
+
+2. **Why 2-minute threshold for "Active":**
+   - Default heartbeat interval is typically 60 seconds
+   - 2 minutes allows for one missed heartbeat
+   - Balances sensitivity with false positives
+
+3. **Why sort by heartbeat (not alphabetically):**
+   - Most important information is node health/activity
+   - Recent activity indicates healthy nodes
+   - Stale nodes naturally sink to bottom
+   - Easier to spot problems at a glance
+
+4. **Why terminal control (hide cursor):**
+   - Reduces visual noise during updates
+   - Prevents cursor flicker on refresh
+   - Professional appearance similar to `top`
+   - Always restored on exit for safety
+
+5. **Why default 10-second interval:**
+   - Balances responsiveness with API load
+   - Frequent enough to catch issues quickly
+   - Not so frequent as to overwhelm Exchange
+   - User-configurable for different needs
+
+**Limitations and Future Enhancements:**
+
+**Current Limitations:**
+1. No pagination (displays all nodes)
+2. No filtering by status or pattern
+3. No detailed node information view
+4. No historical data or trends
+5. Terminal size not dynamically adjusted
+
+**Potential Enhancements:**
+1. Add filtering options (by status, pattern, arch)
+2. Implement pagination for large node lists
+3. Add detailed view mode (press 'd' for details)
+4. Track heartbeat history and show trends
+5. Add sorting options (by name, type, arch)
+6. Implement search/filter functionality
+7. Add export to CSV/JSON file
+8. Show node resource usage (if available)
+9. Add alerts for nodes going offline
+10. Implement dashboard mode with multiple views
+
+**Testing Considerations:**
+
+1. **Unit Tests Needed:**
+   - `timestamp_to_seconds()` function
+   - `format_time_ago()` function
+   - `get_heartbeat_color()` function
+   - Sorting logic
+   - Status categorization
+
+2. **Integration Tests Needed:**
+   - API call with valid credentials
+   - API call with invalid credentials
+   - Handling empty node list
+   - Handling malformed API responses
+   - Terminal control (cursor hide/show)
+   - Signal handling (Ctrl+C)
+
+3. **Manual Tests Needed:**
+   - Different terminal sizes
+   - Different refresh intervals
+   - Nodes in different states (active/stale/inactive)
+   - Long-running monitoring sessions
+   - Keyboard controls (q, r)
+   - Color output vs no-color mode
+
+**Security Considerations:**
+
+1. **Credential Handling:**
+   - Never displays passwords in output
+   - Uses masked authentication in verbose mode
+   - Credentials loaded from secure .env files
+   - No credentials in process arguments
+
+2. **API Communication:**
+   - Uses HTTPS for production environments
+   - Supports self-signed certificates (common in OH deployments)
+   - No credential caching or storage
+   - Clean exit on authentication failures
+
+**Comparison with Similar Tools:**
+
+**vs. `top` command:**
+- Similar: Real-time updates, sorted display, interactive controls
+- Different: Monitors distributed nodes, not local processes
+
+**vs. `watch hzn exchange node list`:**
+- Similar: Periodic updates of node list
+- Different: Sorted by activity, color-coded, summary stats, cleaner display
+
+**vs. `list-a-user-nodes.sh`:**
+- Similar: Uses same API endpoint, same authentication
+- Different: Continuous monitoring vs one-time listing, sorted by heartbeat
+
+This implementation provides a powerful, user-friendly tool for monitoring Open Horizon node health in real-time, with careful attention to cross-platform compatibility, error handling, and user experience.
+

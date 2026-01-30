@@ -236,6 +236,10 @@ fi
 # We'll test by trying to list users in a different org (if target != auth)
 # Or indicate this requires iterating through all orgs
 if [ "$TARGET_ORG" != "$HZN_ORG_ID" ]; then
+    # Declare variables that will be set by test_api_access
+    test_can_access=""
+    test_http_code=""
+    test_response_body=""
     # Test access to different org as proxy for "all users" capability
     test_api_access "/orgs/${TARGET_ORG}/users" "List users in different organization"
     level1_actual="$test_can_access"
@@ -288,6 +292,10 @@ else
 fi
 
 # Test Level 2
+# Declare variables that will be set by test_api_access
+test_can_access=""
+test_http_code=""
+test_response_body=""
 test_api_access "/orgs/${TARGET_ORG}/users" "List users in organization '$TARGET_ORG'"
 level2_actual="$test_can_access"
 level2_http_code="$test_http_code"
@@ -333,6 +341,10 @@ level3_predicted=true
 level3_pred_reason="All authenticated users can view their own information"
 
 # Test Level 3
+# Declare variables that will be set by test_api_access
+test_can_access=""
+test_http_code=""
+test_response_body=""
 test_api_access "/orgs/${HZN_ORG_ID}/users/${AUTH_USER}" "View own user information"
 level3_actual="$test_can_access"
 level3_http_code="$test_http_code"

@@ -596,12 +596,12 @@ display_api_request() {
     local remaining="$path"
     while [ -n "$remaining" ]; do
         case "$remaining" in
-            /orgs/${HZN_ORG_ID}*)
+            /orgs/"${HZN_ORG_ID}"*)
                 echo -n "/orgs/"
                 echo -n -e "${YELLOW}${HZN_ORG_ID}${NC}"
                 remaining="${remaining#/orgs/"${HZN_ORG_ID}"}"
                 ;;
-            /users/${AUTH_USER}*)
+            /users/"${AUTH_USER}"*)
                 echo -n "/users/"
                 echo -n -e "${MAGENTA}${AUTH_USER}${NC}"
                 remaining="${remaining#/users/"${AUTH_USER}"}"
