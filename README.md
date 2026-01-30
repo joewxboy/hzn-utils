@@ -57,6 +57,9 @@ This repository contains several utility scripts for managing Open Horizon insta
 - **`can-i-list-orgs.sh`** - Check if user can list organizations
 - **`can-i-list-services.sh`** - Check if user can list services at different access levels
 
+### Monitoring Scripts
+- **`monitor-nodes.sh`** - Real-time node monitoring utility (like 'top' for nodes)
+
 ### Testing Scripts
 - **`test-credentials.sh`** - Test and validate your Open Horizon credentials
 - **`test-hzn.sh`** - Test Open Horizon CLI installation and configuration
@@ -397,6 +400,97 @@ Advanced script using REST API directly to list all nodes in an organization.
 **Node Type Legend:**
 - `[Device]` (Blue) - Edge device node
 - `[Cluster]` (Magenta) - Edge cluster node
+
+### monitor-nodes.sh (Real-Time Node Monitoring)
+
+Real-time monitoring utility for Open Horizon nodes, similar to the `top` command. Displays a continuously updating table of nodes sorted by most recent heartbeat activity.
+
+**Usage:**
+```bash
+# Monitor with default settings (10s refresh)
+./monitor-nodes.sh
+
+# Custom refresh interval (5 seconds)
+./monitor-nodes.sh -i 5
+
+# Monitor specific user's nodes
+./monitor-nodes.sh -u myuser
+
+# Run once and exit (no continuous monitoring)
+./monitor-nodes.sh --once
+
+# JSON output for automation
+./monitor-nodes.sh --json mycreds.env
+
+# Use specific .env file
+./monitor-nodes.sh mycreds.env
+```
+
+**Options:**
+- `-i, --interval SECONDS` - Refresh interval in seconds (default: 10)
+- `-u, --user USER_ID` - Monitor nodes for specific user (default: authenticated user)
+- `-n, --no-color` - Disable color output
+- `-1, --once` - Run once and exit (no continuous monitoring)
+- `-j, --json` - Output JSON format (implies --once)
+- `-v, --verbose` - Show detailed information
+- `-h, --help` - Show help message
+
+**Features:**
+- Real-time monitoring with configurable refresh interval
+- Nodes sorted by most recent heartbeat (freshest at top)
+- Human-readable time format (e.g., "5s ago", "2m ago", "3h ago")
+- Color-coded status based on heartbeat age:
+  - 🟢 Green: Active (< 2 minutes)
+  - 🟡 Yellow: Stale (2-10 minutes)
+  - 🔴 Red: Inactive (> 10 minutes)
+- Summary statistics (total, active, stale, inactive nodes)
+- Interactive controls (q to quit, r to refresh)
+- Multiple output modes (interactive, once, JSON)
+- Terminal-friendly display with automatic cleanup
+
+**Display Format:**
+```
+═══════════════════════════════════════════════════════════════════════════════
+Open Horizon Node Monitor - User: username, Org: orgname
+═══════════════════════════════════════════════════════════════════════════════
+Refresh: 10s | Total: 5 | Active: 2 | Stale: 1 | Inactive: 2
+Last Updated: 2026-01-30 15:45:23
+
+NODE ID                   TYPE         ARCH       STATUS   LAST HEARTBEAT       PATTERN
+───────────────────────────────────────────────────────────────────────────────
+node-prod-01              device       amd64      Active   5s ago               ibm.helloworld
+node-prod-02              device       arm64      Active   12s ago              ibm.helloworld
+node-staging-01           cluster      amd64      Stale    5m ago               ibm.cpu2evtstreams
+node-dev-01               device       amd64      Inactive 2h ago               -
+node-test-01              device       arm64      Inactive 5d ago               -
+
+Press 'q' to quit, 'r' to refresh now
+```
+
+**Interactive Controls:**
+- `q` or `Ctrl+C` - Exit the monitor
+- `r` - Force immediate refresh (doesn't wait for interval)
+
+**Use Cases:**
+- Monitor node health and activity in real-time
+- Quickly identify inactive or stale nodes
+- Track node heartbeat patterns
+- Verify nodes are checking in regularly
+- Troubleshoot node connectivity issues
+- Generate node status reports (using --once or --json)
+
+**Node Status Determination:**
+Since the Exchange API doesn't provide a `configstate` field, status is determined by heartbeat age:
+- **Active**: Last heartbeat within 2 minutes
+- **Stale**: Last heartbeat between 2-10 minutes
+- **Inactive**: Last heartbeat older than 10 minutes
+
+**Technical Details:**
+- Uses `lastHeartbeat` field from Exchange API
+- Timestamps in ISO 8601 UTC format
+- Sorts nodes by heartbeat timestamp (most recent first)
+- Terminal control for cursor hiding/showing
+- Graceful cleanup on exit or interrupt
 
 ### can-i-list-orgs.sh (Organization Permission Verification)
 
