@@ -222,6 +222,10 @@ else
 fi
 
 # Test Level 1
+# Declare variables that will be set by test_api_access
+test_can_access=""
+test_http_code=""
+test_response_body=""
 test_api_access "/orgs" "List all organizations"
 level1_actual="$test_can_access"
 level1_http_code="$test_http_code"
